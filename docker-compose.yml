@@ -1,0 +1,12 @@
+version: '3'
+services:
+  ws:
+    build: .
+    ports:
+      - "${WEB_PORT:-9000}:9000"
+    networks:
+      - BonzomaticServer
+    restart: always
+
+networks:
+  BonzomaticServer:
