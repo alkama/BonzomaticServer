@@ -48,12 +48,14 @@ var upgrader = websocket.Upgrader{
 type client struct {
 	referee *referee
 	room    string
+	nick    string
 	conn    *websocket.Conn
 	send    chan []byte
 }
 
 type message struct {
 	room string
+	nick string
 	msg  []byte
 }
 
@@ -73,7 +75,9 @@ func (c *client) readFromConnectionPump() {
 			}
 			break
 		}
-		c.referee.broadcast <- message{room: c.room, msg: msg}
+		if c.nick != "" {
+			c.referee.broadcast <- message{room: c.room, nick: c.nick, msg: msg}
+		}
 	}
 }
 
@@ -143,7 +147,7 @@ func (r *referee) run() {
 
 		case message := <-r.broadcast:
 			for client := range r.clients {
-				if client.room == message.room {
+				if client.room == message.room && (client.nick == message.nick || client.nick == "") {
 					select {
 					case client.send <- message.msg:
 					default:
@@ -157,12 +161,12 @@ func (r *referee) run() {
 }
 
 func getRoomAndNick(url string) (*string, *string, error) {
-	re, err := regexp.Compile(`^/([A-Za-z0-9_]{3,64})/([A-Za-z0-9_]{2,16})$`)
+	re, err := regexp.Compile(`^/([A-Za-z0-9_]{3,64})/([A-Za-z0-9_]{0,16})$`)
 	if err != nil {
 		return nil, nil, err
 	}
 	match := re.FindStringSubmatch(url)
-	if len(match) != 3 {
+	if len(match) < 2 {
 		return nil, nil, &bsError{code: errWrongPath, expr: "Wrong room name and/or nickname."}
 	}
 	return &match[1], &match[2], nil
@@ -187,10 +191,8 @@ func main() {
 			return
 		}
 
-		roomnick := *room + "+" + *nick
-
-		log.Println("Client connected to room: '" + roomnick + "'")
-		client := &client{referee: referee, room: roomnick, conn: conn, send: make(chan []byte, 256)}
+		log.Println("Client connected to room: '" + *room + "' with nick: '" + *nick + "'")
+		client := &client{referee: referee, room: *room, nick: *nick, conn: conn, send: make(chan []byte, 256)}
 		client.referee.register <- client
 		go client.writeToConnectionPump()
 		go client.readFromConnectionPump()
